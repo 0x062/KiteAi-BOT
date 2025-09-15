@@ -306,23 +306,35 @@ class KiteAICron:
         self.log(f"{Fore.CYAN+Style.BRIGHT}--- Selesai Interaksi AI Agent ---")
 
 
+    # GANTI FUNGSI LAMA DENGAN YANG INI
     async def run_multisig_creation(self, account: str, address: str):
         self.log(f"{Fore.CYAN+Style.BRIGHT}--- Memulai Pembuatan Multisig Wallet ---")
+
+        # Dapatkan salt nonce awal SATU KALI sebelum loop
+        safes = await self.owner_safes_wallet(address)
+        if safes is None:
+            self.log(f"  {Fore.RED}Tidak bisa mendapatkan data safes, melewati pembuatan multisig untuk akun ini.")
+            return
+
+        # Simpan salt nonce dalam variabel yang akan kita kelola sendiri
+        current_salt_nonce = len(safes.get("safes", []))
+        self.log(f"{Fore.BLUE}Salt Nonce awal yang didapat dari API: {current_salt_nonce}")
+
         for i in range(self.multisig_count):
-            self.log(f"{Fore.WHITE}Membuat multisig ke-{i+1} dari {self.multisig_count}...")
+            self.log(f"{Fore.WHITE}Membuat multisig ke-{i+1} dari {self.multisig_count} (menggunakan salt: {current_salt_nonce})...")
+            
+            # Gunakan variabel salt nonce yang sudah kita siapkan
+            tx_hash = await self.perform_create_proxy(account, address, current_salt_nonce)
 
-            safes = await self.owner_safes_wallet(address)
-            if safes is None: continue
-
-            salt_nonce = len(safes.get("safes", []))
-            self.log(f"  Salt Nonce yang akan digunakan: {salt_nonce}")
-
-            tx_hash = await self.perform_create_proxy(account, address, salt_nonce)
             if tx_hash:
                 self.log(f"  {Fore.GREEN}Transaksi Sukses! Hash: {self.KITE_AI_EXPLORER}{tx_hash}")
+                # PENTING: Tambahkan 1 ke salt nonce untuk iterasi berikutnya
+                current_salt_nonce += 1
             else:
-                self.log(f"  {Fore.RED}Gagal melakukan transaksi on-chain untuk pembuatan proxy.")
-            
+                self.log(f"  {Fore.RED}Gagal melakukan transaksi on-chain. Proses multisig dihentikan untuk akun ini.")
+                break # Jika satu gagal, hentikan loop karena yang berikutnya juga akan gagal.
+
+            # Beri jeda jika bukan loop terakhir
             if i < self.multisig_count - 1:
                 await self.print_delay("pembuatan multisig")
 
